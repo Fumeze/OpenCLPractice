@@ -48,9 +48,9 @@
             printf(" ************************************************\n");               \
             free(buildLog);                                                              \
             exit(1);                                                              \
-        } 
+        }
 
-/* Get platform information and set up the Platform for the defined vendor*/                                                            
+/* Get platform information and set up the Platform for the defined vendor*/
 #define OCL_CREATE_PLATFORMS( PLATFORM )                                      \
     cl_uint     num_platforms;                                                        \
     if ((clGetPlatformIDs(0, NULL, &num_platforms)) == CL_SUCCESS)                    \
@@ -61,7 +61,7 @@
             free(PLATFORM);                                                           \
             exit(-1);                                                                 \
         }                                                                             \
-    }                                                                                 
+    }
 
 /*Release the Allocated Platforms*/
 #define OCL_RELEASE_PLATFORMS( PLATFORM )                                             \
@@ -80,9 +80,9 @@
             exit(-1);                                                                       \
         }                                                                                   \
     }
-    
+
 /*Release the Allocated Device*/
 #define OCL_RELEASE_DEVICES( DEVICES )                                                 \
     free(DEVICES);
-    
+
 #endif
