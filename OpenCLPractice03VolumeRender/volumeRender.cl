@@ -57,20 +57,12 @@ d_render(__global uint *d_output,
           sampler_t volumeSampler,
           sampler_t transferFuncSampler
  #endif
-		  ,uint length, uint width, uint height
+		  ,float len, float wid, float hei
          )
 
 {	
     uint x = get_global_id(0);
     uint y = get_global_id(1);
-
-
-	int maxLen = length;
-	if(maxLen < width){maxLen = width;}
-	if(maxLen < height){maxLen = height;}
-	float len = (float)length / (float)maxLen;
-	float wid = (float)width / (float)maxLen;
-	float hei = (float)height / (float)maxLen;
 
     float u = (x / (float) imageW)*2.0f-1.0f;
     float v = (y / (float) imageH)*2.0f-1.0f;
@@ -110,9 +102,9 @@ d_render(__global uint *d_output,
 
     for(uint i=0; i<maxSteps; i++) {		
         float4 pos = eyeRay_o + eyeRay_d*t;
-		pos.x = (pos.x + wid) * 0.5f / wid * (width - 1);   // pos.x ranged in (-wid, wid)
-		pos.y = (pos.y + hei) * 0.5f / hei * (height - 1);
-		pos.z = (pos.z + len) * 0.5f / len * (length - 1);
+		pos.x = (pos.x + len) * (0.5/len);   // pos.x ranged in (-wid, wid)
+		pos.y = (pos.y + wid) * (0.5/wid);
+		pos.z = (pos.z + hei) * (0.5/hei);
 
         // read from 3D texture        
 #ifdef IMAGE_SUPPORT        
@@ -121,6 +113,7 @@ d_render(__global uint *d_output,
         // lookup in transfer function texture
         float2 transfer_pos = (float2)((sample.x-transferOffset)*transferScale, 0.5f);
         float4 col = read_imagef(transferFunc, transferFuncSampler, transfer_pos);
+		col.xyz = (float3)(col.w, col.w, col.w);
 #else
         float4 col = (float4)(pos.x,pos.y,pos.z,.25f);
 #endif
