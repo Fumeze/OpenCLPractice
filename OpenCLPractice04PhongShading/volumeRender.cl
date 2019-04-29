@@ -11,7 +11,13 @@
 
 #define maxSteps 500
 #define tstep 0.01f
+__constant float3 light_ambient = (float3)(0.1f, 0.1f, 0.1f);
+__constant float3 light_diffuse = (float3)(0.5f, 0.5f, 0.5f);
+__constant float3 light_specular = (float3)(0.6f, 0.6f, 0.6f);
 
+__constant float3 material_ambient = (float3)(1.0f, 0.7f, 0.5f);
+__constant float3 material_diffuse = (float3)(1.0f, 0.7f, 0.5f);
+__constant float3 material_specular = (float3)(0.5f, 0.5f, 0.5f);
 // intersect ray with a box
 // http://www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
 
@@ -61,8 +67,12 @@ d_render(__global uint *d_output,
          )
 
 {	
+
     uint x = get_global_id(0);
     uint y = get_global_id(1);
+
+	float accumA = 0.0;
+	float3 accumC = (float3)(0.0,0.0,0.0);
 
     float u = (x / (float) imageW)*2.0f-1.0f;
     float v = (y / (float) imageH)*2.0f-1.0f;
@@ -113,15 +123,23 @@ d_render(__global uint *d_output,
         // lookup in transfer function texture
         float2 transfer_pos = (float2)((sample.x-transferOffset)*transferScale, 0.5f);
         float4 col = read_imagef(transferFunc, transferFuncSampler, transfer_pos);
-		col.xyz = (float3)(col.w, col.w, col.w);
+
+		float3 L = (float3)(eyeRay_d.y,eyeRay_d.x,eyeRay_d.z);
+		col.xyz = (float3)(light_ambient * material_ambient+
+									light_diffuse * material_diffuse * max( dot( sample.xyz, L), 0.0f)+
+									light_specular * material_specular * pow( max( dot( sample.xyz, normalize(L + L)), 0.0f), 10));
 #else
         float4 col = (float4)(pos.x,pos.y,pos.z,.25f);
 #endif
 
 
         // accumulate result
-        float a = col.w*density;
-        temp = mix(temp, col, (float4)(a, a, a, a));
+        float alpha = col.w*density;
+		accumC = alpha * col.xyz + (1-alpha)*accumC;		
+		accumA = (1 - accumA) * alpha + accumA;
+		col.xyz = accumC;
+		col.w = accumA;
+        temp = mix(temp, col, (float4)(accumA, accumA, accumA, accumA));
 
         t -= tstep;
         if (t < tnear) break;
