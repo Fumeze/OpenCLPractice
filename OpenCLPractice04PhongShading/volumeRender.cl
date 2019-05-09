@@ -42,6 +42,88 @@ int intersectBox(float4 r_o, float4 r_d, float4 boxmin, float4 boxmax, float *tn
 	return smallest_tmax > largest_tmin;
 }
 
+float3 calcNormal(image3d_t volume, sampler_t volumeSampler, float4 pos)
+{
+	float SobelX[3][3][3] =
+	{
+		{
+			{-1, -3, 1},
+			{0, 0, 0},
+			{1, 3, 1}
+		},
+		{
+			{-3, -6, -3},
+			{0, 0, 0},
+			{3, 6, 3}
+		},
+		{
+			{-1, -3, -1},
+			{0, 0, 0},
+			{1, 3, 1}
+		}
+	};
+	float SobelY[3][3][3] =
+	{
+		{
+			{1, 3, 1},
+			{3, 6, 3},
+			{1, 3, 1}
+		},
+		{
+			{0, 0, 0},
+			{0, 0, 0},
+			{0, 0, 0}
+		},
+		{
+			{-1, -3, -1},
+			{-3, -6, -3},
+			{-1, -3, -1}
+		}
+	};
+	float SobelZ[3][3][3] =
+	{
+		{
+			{-1, 0, 1},
+			{-3, 0, 3},
+			{-1, 0, 1}
+		},
+		{
+			{-3, 0, 3},
+			{-6, 0, 6},
+			{-3, 0, 3}
+		},
+		{
+			{-1, 0, 1},
+			{-3, 0, 3},
+			{-1, 0, 1}
+		}
+	};
+	float4 position = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+	float4 ConData[3][3][3];
+	float step = 1/306;
+	float x = 0.0f;
+	float y = 0.0f;
+	float z = 0.0f;
+	for(int i = 0; i < 3; i++)
+	{
+		for(int j = 0; j < 3; j++)
+		{
+			for(int k = 0; k < 3; k++)
+			{
+				position = (float4)(pos.x + (i - 1) * step, pos.y + (j - 1) * step, pos.z + (k - 1) * step, pos.w);
+				//printf("%f %f %f\n",position.x,position.y,position.z);
+				//position = (float4)(pos.x, pos.y, pos.z, pos.w);
+				ConData[i][j][k] = read_imagef(volume, volumeSampler, position);
+				x += ConData[i][j][k].x * SobelX[i][j][k];
+				y += ConData[i][j][k].y * SobelY[i][j][k];
+				z += ConData[i][j][k].z * SobelZ[i][j][k];
+			}
+		}
+	}
+	float3 result = (float3)(x, y, z);
+	return result;
+}
+
 uint rgbaFloatToInt(float4 rgba)
 {
     rgba.x = clamp(rgba.x,0.0f,1.0f);  
@@ -112,22 +194,16 @@ d_render(__global uint *d_output,
 
     for(uint i=0; i<maxSteps; i++) {		
         float4 pos = eyeRay_o + eyeRay_d*t;
-		pos.x = (pos.x + len) * (0.5/len);   // pos.x ranged in (-wid, wid)
+		pos.x = (pos.x + len) * (0.5/len); 
 		pos.y = (pos.y + wid) * (0.5/wid);
 		pos.z = (pos.z + hei) * (0.5/hei);
 
         // read from 3D texture        
 #ifdef IMAGE_SUPPORT        
-        float4 sample = read_imagef(volume, volumeSampler, pos);
-        
+        float4 sampler = read_imagef(volume, volumeSampler, pos);
         // lookup in transfer function texture
-        float2 transfer_pos = (float2)((sample.x-transferOffset)*transferScale, 0.5f);
+        float2 transfer_pos = (float2)((sampler.x-transferOffset)*transferScale, 0.5f);
         float4 col = read_imagef(transferFunc, transferFuncSampler, transfer_pos);
-
-		float3 L = (float3)(eyeRay_d.y,eyeRay_d.x,eyeRay_d.z);
-		col.xyz = (float3)(light_ambient * material_ambient+
-									light_diffuse * material_diffuse * max( dot( sample.xyz, L), 0.0f)+
-									light_specular * material_specular * pow( max( dot( sample.xyz, normalize(L + L)), 0.0f), 10));
 #else
         float4 col = (float4)(pos.x,pos.y,pos.z,.25f);
 #endif
@@ -135,17 +211,21 @@ d_render(__global uint *d_output,
 
         // accumulate result
         float alpha = col.w*density;
-		accumC = alpha * col.xyz + (1-alpha)*accumC;		
+		float3 L = eyeRay_d.yxz;
+		float3 H = normalize(L + L);
+		float3 N = calcNormal(volume, volumeSampler, pos);
+		float3 color = (float3)(light_ambient * material_ambient+
+									light_diffuse * material_diffuse * max( dot( N, L), 0.0f)+
+									light_specular * material_specular * pow( max( dot( N, H), 0.0f), 5));
+		accumC = alpha * color + (1-alpha)*accumC;		
 		accumA = (1 - accumA) * alpha + accumA;
 		col.xyz = accumC;
 		col.w = accumA;
-        temp = mix(temp, col, (float4)(accumA, accumA, accumA, accumA));
-
+        temp = mix(temp, col, (float4)(alpha, alpha, alpha, alpha));
         t -= tstep;
         if (t < tnear) break;
     }
     temp *= brightness;
-
     if ((x < imageW) && (y < imageH)) {
         // write output color
         uint i =(y * imageW) + x;
