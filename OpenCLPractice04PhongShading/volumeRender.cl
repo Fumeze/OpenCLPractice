@@ -42,12 +42,18 @@ int intersectBox(float4 r_o, float4 r_d, float4 boxmin, float4 boxmax, float *tn
 	return smallest_tmax > largest_tmin;
 }
 
-float3 calcNormal(image3d_t volume, sampler_t volumeSampler, float4 pos)
+int findMax(int width, int height, int depth) {
+    int big = (width > height) ? width : height;
+    big = (depth > big) ? depth : big;
+    return big;
+}
+
+float3 calcNormal(image3d_t volume, sampler_t volumeSampler, float4 pos, int width,int height,int length)
 {
 	float SobelX[3][3][3] =
 	{
 		{
-			{-1, -3, 1},
+			{-1, -3, -1},
 			{0, 0, 0},
 			{1, 3, 1}
 		},
@@ -100,7 +106,7 @@ float3 calcNormal(image3d_t volume, sampler_t volumeSampler, float4 pos)
 	};
 	float4 position = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
 	float4 ConData[3][3][3];
-	float step = 1/306;
+	float step = 3.f;
 	float x = 0.0f;
 	float y = 0.0f;
 	float z = 0.0f;
@@ -110,9 +116,7 @@ float3 calcNormal(image3d_t volume, sampler_t volumeSampler, float4 pos)
 		{
 			for(int k = 0; k < 3; k++)
 			{
-				position = (float4)(pos.x + (i - 1) * step, pos.y + (j - 1) * step, pos.z + (k - 1) * step, pos.w);
-				//printf("%f %f %f\n",position.x,position.y,position.z);
-				//position = (float4)(pos.x, pos.y, pos.z, pos.w);
+				position = (float4)(pos.x + (i - 1)*step/width , pos.y + (j - 1)*step/height, pos.z + (k - 1)*step/length , pos.w);
 				ConData[i][j][k] = read_imagef(volume, volumeSampler, position);
 				x += ConData[i][j][k].x * SobelX[i][j][k];
 				y += ConData[i][j][k].y * SobelY[i][j][k];
@@ -121,7 +125,7 @@ float3 calcNormal(image3d_t volume, sampler_t volumeSampler, float4 pos)
 		}
 	}
 	float3 result = (float3)(x, y, z);
-	return result;
+	return normalize(result);
 }
 
 uint rgbaFloatToInt(float4 rgba)
@@ -145,8 +149,7 @@ d_render(__global uint *d_output,
           sampler_t volumeSampler,
           sampler_t transferFuncSampler
  #endif
-		  ,float len, float wid, float hei
-         )
+ )
 
 {	
 
@@ -158,6 +161,15 @@ d_render(__global uint *d_output,
 
     float u = (x / (float) imageW)*2.0f-1.0f;
     float v = (y / (float) imageH)*2.0f-1.0f;
+
+	int length = get_image_depth(volume);
+	int width = get_image_width(volume);
+	int height = get_image_height(volume);
+
+	int maxLen = findMax(width, height, length);
+	float len = (float)length / (float)maxLen;
+	float wid = (float)width / (float)maxLen;
+	float hei = (float)height / (float)maxLen;
 
 	//float tstep = 0.01f;
 	float4 boxMin = (float4)(-wid, -hei, -len, 1.0f);
@@ -194,13 +206,16 @@ d_render(__global uint *d_output,
 
     for(uint i=0; i<maxSteps; i++) {		
         float4 pos = eyeRay_o + eyeRay_d*t;
-		pos.x = (pos.x + len) * (0.5/len); 
-		pos.y = (pos.y + wid) * (0.5/wid);
-		pos.z = (pos.z + hei) * (0.5/hei);
+		pos.x = (pos.x + wid) * (0.5/wid); 
+		pos.y = (pos.y + hei) * (0.5/hei);
+		pos.z = (pos.z + len) * (0.5/len);
+
 
         // read from 3D texture        
 #ifdef IMAGE_SUPPORT        
         float4 sampler = read_imagef(volume, volumeSampler, pos);
+		//if(sampler.x!=0&&sampler.y!=0&&sampler.z!=0)
+			//printf("S:%f %f %f\n",sampler.x,sampler.y,sampler.z);
         // lookup in transfer function texture
         float2 transfer_pos = (float2)((sampler.x-transferOffset)*transferScale, 0.5f);
         float4 col = read_imagef(transferFunc, transferFuncSampler, transfer_pos);
@@ -213,10 +228,12 @@ d_render(__global uint *d_output,
         float alpha = col.w*density;
 		float3 L = eyeRay_d.yxz;
 		float3 H = normalize(L + L);
-		float3 N = calcNormal(volume, volumeSampler, pos);
+		float3 N = calcNormal(volume, volumeSampler, pos, width, height, length);
+		//if(N.x!=0&&N.y!=0&&N.z!=0)
+			//printf("N:%f %f %f\n",N.x,N.y,N.z);
 		float3 color = (float3)(light_ambient * material_ambient+
 									light_diffuse * material_diffuse * max( dot( N, L), 0.0f)+
-									light_specular * material_specular * pow( max( dot( N, H), 0.0f), 5));
+									light_specular * material_specular * pow( max( dot( N, H), 0.0f), 50));
 		accumC = alpha * color + (1-alpha)*accumC;		
 		accumA = (1 - accumA) * alpha + accumA;
 		col.xyz = accumC;

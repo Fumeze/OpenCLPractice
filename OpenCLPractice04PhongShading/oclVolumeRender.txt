@@ -13,7 +13,7 @@ Detailed Device info:
 
   CL_DEVICE_NAME: 			GeForce GTX 965M
   CL_DEVICE_VENDOR: 			NVIDIA Corporation
-  CL_DRIVER_VERSION: 			430.39
+  CL_DRIVER_VERSION: 			430.64
   CL_DEVICE_VERSION: 			OpenCL 1.2 CUDA
   CL_DEVICE_OPENCL_C_VERSION: 		OpenCL C 1.2 
   CL_DEVICE_TYPE:			CL_DEVICE_TYPE_GPU
@@ -73,5 +73,13 @@ Detailed Device info:
  Read './data/fetus.raw', 17684352 bytes
  Raw file data loaded...
 
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
+ Volume Render | W: 512  H: 512
  Volume Render | W: 512  H: 512
  Volume Render | W: 512  H: 512

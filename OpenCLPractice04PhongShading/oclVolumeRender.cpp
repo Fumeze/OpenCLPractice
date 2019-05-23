@@ -227,14 +227,6 @@ int main(int argc, char** argv)
 	if (shrGetCmdLineArgumenti(argc, (const char**)argv, "zsize", &n)) {
 		volumeSize[2] = n;
 	}
-	size_t maxLen = std::max({ volumeSize[0], volumeSize[1], volumeSize[2] });
-	float len = (float)volumeSize[0] / (float)maxLen;
-	float wid = (float)volumeSize[1] / (float)maxLen;
-	float hei = (float)volumeSize[2] / (float)maxLen;
-	ciErrNum |= clSetKernelArg(ckKernel, 12, sizeof(float), &len);
-	ciErrNum |= clSetKernelArg(ckKernel, 13, sizeof(float), &wid);
-	ciErrNum |= clSetKernelArg(ckKernel, 14, sizeof(float), &hei);
-	oclCheckErrorEX(ciErrNum, CL_SUCCESS, pCleanup);
 
 	// load volume data
 	free(cPathAndName);
@@ -636,14 +628,24 @@ void initCLVolume(uchar * h_volume)
 
 	if (g_bImageSupport)
 	{
+		// create 3D array and copy data to device
 		cl_image_format volume_format;
-		volume_format.image_channel_order = CL_R;// * 4通道数据
-		volume_format.image_channel_data_type = CL_UNORM_INT8;// * 每个通道非归一化1个字节
-		d_volumeArray = clCreateImage3D(cxGPUContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, &volume_format,
-			volumeSize[0], volumeSize[1], volumeSize[2],
-			volumeSize[0], (volumeSize[0] * volumeSize[1]),
-			h_volume, &ciErrNum);
+		volume_format.image_channel_order = CL_RGBA;
+		volume_format.image_channel_data_type = CL_UNORM_INT8;
+		uchar* h_tempVolume = (uchar*)malloc(volumeSize[0] * volumeSize[1] * volumeSize[2] * 4);
+		for (int i = 0; i < (int)(volumeSize[0] * volumeSize[1] * volumeSize[2]); i++)
+		{
+			h_tempVolume[4 * i] = h_volume[i];
+			// 灰度
+			h_tempVolume[4 * i + 1] = h_volume[i];
+			h_tempVolume[4 * i + 2] = h_volume[i];
+		}
+		d_volumeArray = clCreateImage3D(cxGPUContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+			&volume_format, volumeSize[0], volumeSize[1], volumeSize[2],
+			(volumeSize[0] * 4), (volumeSize[0] * volumeSize[1] * 4),
+			h_tempVolume, &ciErrNum);
 		oclCheckErrorEX(ciErrNum, CL_SUCCESS, pCleanup);
+		free(h_tempVolume);
 
 		// create transfer function texture
 		float transferFunc[256];
@@ -663,11 +665,14 @@ void initCLVolume(uchar * h_volume)
 		oclCheckErrorEX(ciErrNum, CL_SUCCESS, pCleanup);
 
 		// Create samplers for transfer function, linear interpolation and nearest interpolation
-		transferFuncSampler = clCreateSampler(cxGPUContext, true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR, &ciErrNum);
+		transferFuncSampler = clCreateSampler(cxGPUContext, true, CL_ADDRESS_CLAMP_TO_EDGE,
+			CL_FILTER_LINEAR, &ciErrNum);
 		oclCheckErrorEX(ciErrNum, CL_SUCCESS, pCleanup);
-		volumeSamplerLinear = clCreateSampler(cxGPUContext, true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR, &ciErrNum);
+		volumeSamplerLinear = clCreateSampler(cxGPUContext, true, CL_ADDRESS_CLAMP_TO_EDGE,
+			CL_FILTER_LINEAR, &ciErrNum);
 		oclCheckErrorEX(ciErrNum, CL_SUCCESS, pCleanup);
-		volumeSamplerNearest = clCreateSampler(cxGPUContext, true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_NEAREST, &ciErrNum);
+		volumeSamplerNearest = clCreateSampler(cxGPUContext, true, CL_ADDRESS_CLAMP_TO_EDGE,
+			CL_FILTER_NEAREST, &ciErrNum);
 		oclCheckErrorEX(ciErrNum, CL_SUCCESS, pCleanup);
 
 		// set image and sampler args
